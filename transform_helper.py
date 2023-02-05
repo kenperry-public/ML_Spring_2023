@@ -210,10 +210,10 @@ class ShiftedPrice_Helper():
         
         return
 
-    def gen_data(self):
+    def gen_data(self, m=None):
         th = Transformation_Helper()
         
-        dfs = [ th.gen_data(random_seed=42+i) for i in range(0,4) ]
+        dfs = [ th.gen_data(random_seed=42+i, m=m) for i in range(0,4) ]
 
         return dfs
 
@@ -224,6 +224,8 @@ class ShiftedPrice_Helper():
         x0, y0 = dfs[0]["area"],  dfs[0]["price"]
         x1, y1 = dfs[1]["area"],  dfs[1]["price"] +2000
 
+        self.x0, self.y0, self.x1, self.y1 = x0, y0, x1, y1
+        
         if nolabels:
             x, y = pd.concat( [x0, x1]), pd.concat( [y0, y1] )
             _= ax.scatter(x,y)
