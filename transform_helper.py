@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import matplotlib as mpl
+from matplotlib.gridspec import GridSpec
 
 from sklearn import datasets, neighbors, linear_model
 from sklearn.model_selection import train_test_split
@@ -398,6 +399,197 @@ class StockPrice_shiftedMean_Helper():
             axs[i].hist(rets_series)
             axs[i].set_title(f"Return segment {i:d}")
 
+        if not visible:
+            plt.close(fig)
+
+        return fig, axs
+
+
+
+class StockReturn_Pooling_Helper():
+    def __init__(self, **params):
+        # Random number generator
+        rng = np.random.RandomState(42)
+        self.rng = rng
+        
+        self.colors = [ "blue", "orange"]
+        return
+
+    def gen_returns(self, return_means, return_stds, beta=1.4, num_returns=30):
+        """
+        Generate a return series consisting of segments.
+
+        Each segment is same length (num_returns) but different average level.
+        Between segments: there is a jump in the price level (implemented as an extra point with unusual return)
+
+        Parameters
+        ----------
+        These are arrays: element i defines segment i
+        return_means: Array.  Average daily return
+        return_std:   Array.  Standard deviation of daily returns
+        
+
+        Returns
+        -------
+        DataFrame with colums "Return" for price levels and returns
+        """
+
+        num_segments = len(return_means)
+    
+        
+        # Generate normalized returns
+        rng = self.rng
+        rets_norm = rng.normal(size=num_returns)
+
+        dfs = []
+        # Generate returns from normal distribution with mean return_mean and std deviation return_std
+        for seg in range(num_segments):
+            ind =  return_means[seg] +  rets_norm * return_stds[seg]
+            noise = rng.normal(size=len(ind)) * return_stds[seg] * .05
+            
+            dep =  beta * ind + noise 
+            
+            df = pd.DataFrame( { "ind": ind, 
+                                 "dep": dep,
+                                 "Dt": [ (seg*num_returns) + i for i in range(num_returns) ],
+                                 "Segment": [seg] * num_returns }
+                             )
+            df.set_index("Dt", inplace=True)
+            
+            dfs.append(df)
+
+           
+        big_df = pd.concat( dfs, axis=0)
+        
+        return big_df
+    
+    def normalize_data(self, df, Debug=False):
+        """
+        Return normalized verson of DataFrame df
+        - subtract mean, divide by standard deviation
+        
+        Parameters
+        ----------
+        df: DataFrame
+        
+        Returns:
+        DataFrame
+        """
+        
+        dfs = []
+
+        # Normalize each segment
+        # using the mean and standard deviation off each segment
+        segments = df["Segment"].unique()
+        
+        for seg in segments:
+            df_seg = df.loc[df["Segment"] == seg,:].copy()
+            
+            # Compute mean and std deviation of each variable
+            seg_ind_mean, seg_ind_std = df_seg.loc[:,"ind"].mean(), df_seg.loc[:,"ind"].std()
+            seg_dep_mean, seg_dep_std = df_seg.loc[:,"dep"].mean(), df_seg.loc[:,"dep"].std()
+
+            if Debug:
+                print(f"Time {seg:d}: mean_ind={seg_ind_mean:5.3f}, std_ind={seg_ind_std:5.3f}")
+
+            # Standardize
+            df_seg.loc[:,"ind"] = (df_seg.loc[:,"ind"] - seg_ind_mean)/seg_ind_std
+            df_seg.loc[:,"dep"] = (df_seg.loc[:,"dep"] - seg_dep_mean)/seg_dep_std
+
+            dfs.append(df_seg)
+
+        df_new = pd.concat(dfs, axis=0)
+
+        return df_new
+
+    def plot_data(self, df, fig=None, axs=None, visible=True):
+        """
+        Convenience method to plot the DataFrame with levels and returns
+
+        Parameters
+        ----------
+        DataFrame with columns "Level", "Return"
+
+        Returns
+        -------
+        fig, axs: Matplot lib plot
+        """
+
+        segments = df["Segment"].unique()
+        num_segments = len(segments)
+        
+        if axs is None:
+            fig = plt.figure(figsize=(12,6), constrained_layout=True)
+            gs = GridSpec(4, 2, figure=fig)
+            axs = [ fig.add_subplot( spec ) for spec in [ gs[0:2,:], 
+                                                          gs[2,0], gs[2,1],
+                                                          gs[3,0], gs[3,1]
+                                                        ] 
+                  ]
+        
+        colors = self.colors
+        
+        # Joint plot
+        for i, seg in enumerate(segments):
+            df_seg = df[ df["Segment"] == seg ]
+            
+            _= axs[0].scatter( df_seg["ind"], df_seg["dep"], label=f'$time_{i:d}$', color=colors[i])
+            
+        _= axs[0].set_xlabel("ind")
+        _= axs[0].set_ylabel("dep") 
+        
+        _= axs[0].legend()
+        
+        # Individual histograms
+        spec_num = 1
+        for j, key in enumerate( ["dep", "ind"] ):
+            # all segment should share the same range on horizontal axis
+            xmin, xmax = df[key].min(), df[key].max()
+            
+            for i, seg in enumerate(segments):
+                df_seg = df[ df["Segment"] == seg ]
+
+                _= axs[spec_num].hist(df_seg[key], color=colors[i])
+                _= axs[spec_num].set_title(f'$time_{i:d}$ {key}')
+                _= axs[spec_num].set_xlim([xmin,xmax])
+                spec_num += 1
+                 
+        if not visible:
+            plt.close(fig)
+
+        return fig, axs
+
+    def plot_segments(self, df, fig=None, axs=None, visible=True):
+        """
+        Convenience method to plot Returns of each segment the DataFrame
+
+        Parameters
+        ----------
+        DataFrame with columns "ind", "dep", "Segment"
+
+        Returns
+        -------
+        fig, axs: Matplot lib plot
+        """
+
+        segments = df["Segment"].unique()
+        num_segments = len(segments)
+        
+        if axs is None:
+            fig, axs = plt.subplots(1, num_segments, figsize=(12,6) )
+
+
+        colors = self.colors
+        
+        for i, seg in enumerate(segments):
+            df_seg = df[ df["Segment"] == seg ]
+            
+            _= axs[i].scatter( df_seg["ind"], df_seg["dep"], label=f'$time_{seg:d}$', color=colors[i])
+            _= axs[i].set_xlabel("ind")
+            _= axs[i].set_ylabel("dep")
+            
+            _= axs[i].legend()
+            
         if not visible:
             plt.close(fig)
 
