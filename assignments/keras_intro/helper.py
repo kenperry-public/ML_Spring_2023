@@ -7,7 +7,7 @@ import os
 import h5py
 import pickle
 import tensorflow as tf
-from nose.tools import assert_equal
+# from nose.tools import assert_equal
 from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import to_categorical
 
